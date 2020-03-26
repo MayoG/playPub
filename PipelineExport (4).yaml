@@ -1,0 +1,33 @@
+
+  - name: "Untitled Component"
+    queues:
+      - "cd"
+      - "de"
+      - "ddd"
+    routines:
+      - routine_type_name: "MessageFromRedis"
+        name: "a"
+        redis_read_key: "bc"
+        out_queue: "cd"
+      - routine_type_name: "DoMoreStuff"
+        name: "d"
+        message_queue: "cd"
+        out_queue: "de"
+      - routine_type_name: "DoMoreStuff"
+        name: "aaaa"
+        message_queue: "de"
+        out_queue: "ddd"
+      - routine_type_name: "MessageToRedis"
+        name: "a"
+        url: "aaa"
+        max_stream_length: 3
+        message_queue: "ddd"
+        redis_send_key: "b"
+  - name: "Copy of Untitled Component"
+    queues:
+      - "c"
+    routines:
+      - routine_type_name: "MessageFromRedis"
+        name: "a"
+        redis_read_key: "b"
+        out_queue: "c"
