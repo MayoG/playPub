@@ -25,4 +25,3 @@ components:
 			draw_frames:
 				routine_type_name: DisplayCv2
 				frame_queue: messages
-				a
