@@ -1,0 +1,27 @@
+components:
+  - Stream:
+      queues:
+        - video
+      routines:
+        capture_frame:
+          routine_type_name: ListenToStream
+          out_queue: video
+          stream_address: /home/internet/Desktop/video.mp4
+          fps: 30
+        upload_redis:
+          routine_type_name: MessageToRedis
+          max_stream_length: 10
+          message_queue: video
+          redis_send_key: camera:0
+
+  - Display:
+      queues:
+        - messages
+      routines:
+        get_frames:
+          routine_type_name: MessageFromRedis
+          message_queue: messages
+          redis_read_key: camera:0
+        draw_frames:
+          routine_type_name: DisplayCv2
+          frame_queue: messages
