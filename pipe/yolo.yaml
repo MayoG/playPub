@@ -1,0 +1,30 @@
+YoloV3:
+    execution_mode: process
+    shared_memory: False
+    queues:
+    - frames
+    - preds
+    routines:
+      create_preds:
+        in_queue: frames
+        out_queue: preds
+        cfg: pipert/contrib/YoloResources/yolov3.cfg
+        names: pipert/contrib/YoloResources/coco.names
+        weights: pipert/contrib/YoloResources/yolov3.weights
+        img_size: 416
+        conf_thresh: 0.3
+        nms_thresh: 0.5
+        half: False
+        batch: False
+        routine_type_name: YoloV3Logic
+
+      from_redis:
+        queue: frames
+        in_key: cam
+        routine_type_name: MessageFromRedis
+
+      upload_redis:
+        queue: preds
+        redis_send_key: camera:1
+        maxlen: 100
+        routine_type_name: MessageToRedis

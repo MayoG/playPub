@@ -1,0 +1,16 @@
+Stream:
+    execution_mode: process
+    shared_memory: False
+    queues:
+    - video
+    routines:
+      capture_frame:
+        fps: 30
+        queue: video
+        routine_type_name: ListenToStream
+        stream_address: pipert/contrib/test_old.mp4
+      upload_redis:
+        maxlen: 10
+        queue: video
+        redis_send_key: cam
+        routine_type_name: MessageToRedis

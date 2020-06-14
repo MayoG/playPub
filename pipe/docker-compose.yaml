@@ -1,0 +1,82 @@
+version: '3.7'
+services:
+  redis:
+    container_name: redis
+    image: redis:5.0.7-buster
+    logging:
+      driver: none
+    networks:
+      default:
+        aliases:
+          - redis
+    restart: always
+    ports:
+      - 6379:6379
+
+  base-pipert:
+    container_name: base-pipert
+    logging:
+      driver: none
+    build:
+      context: pipe-base/.
+    networks:
+      default:
+        aliases:
+          - base-pipert
+
+  pipert_flask:
+    container_name: pipert_flask
+    image: pipert_pipert
+    build:
+      context: .
+      args:
+        SPLUNK: "no"
+        DETECTRON: "no"
+    networks:
+      default:
+        aliases:
+          - pipert
+    depends_on:
+      - redis
+      - base-pipert
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UI: ${UI:-false}
+      UI_PORT: ${UI_PORT:-5005}
+      CLI_ENDPOINT: ${CLI_ENDPOINT:-4001}
+    ports:
+      - 5000:5000
+    command: "tail -f /dev/null"
+#    command: "python pipert/core/component_factory.py -cp 'pipert/core/flaskdisplay.yaml' -p '4000'"
+
+  pipert_yolo:
+    container_name: pipert_yolo
+    image: pipert_pipert
+    networks:
+      default:
+        aliases:
+          - pipert
+    depends_on:
+      - pipert_flask
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UI: ${UI:-false}
+      UI_PORT: ${UI_PORT:-5005}
+      CLI_ENDPOINT: ${CLI_ENDPOINT:-4001}
+    command: "python pipert/core/component_factory.py -cp 'pipert/core/yolo.yaml' -p '4001'"
+
+  pipert_vidcap:
+    container_name: pipert_vidcap
+    image: pipert_pipert
+    networks:
+      default:
+        aliases:
+          - pipert
+    depends_on:
+      - pipert_yolo
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      UI: ${UI:-false}
+      UI_PORT: ${UI_PORT:-5005}
+      CLI_ENDPOINT: ${CLI_ENDPOINT:-4001}
+    command: "python pipert/core/component_factory.py -cp 'pipert/core/vidcap.yaml' -p '4002'"

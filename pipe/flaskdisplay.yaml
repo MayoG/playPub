@@ -1,0 +1,16 @@
+FlaskDisplay:
+    execution_mode: process
+    shared_memory: False
+    component_type_name: FlaskVideoDisplay
+    queues:
+    - messages
+    routines:
+      create_image:
+        in_queue: messages
+        out_queue: flask_display
+        routine_type_name: VisLogic
+      get_frames_and_pred:
+        image_meta_queue: messages
+        redis_read_image_key: cam
+        redis_read_meta_key: camera:1
+        routine_type_name: MetaAndFrameFromRedis
