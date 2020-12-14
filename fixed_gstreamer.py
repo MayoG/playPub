@@ -1,4 +1,3 @@
-# cython: language_level=3, boundscheck=False
 import multiprocessing as mp
 from enum import Enum
 import numpy as np
@@ -7,7 +6,8 @@ import gi
 import time
 
 gi.require_version('Gst', '1.0')
-from gi.repository import Gst
+from gi.repository import Gst, GstVideo, utils
+
 
 Gst.debug_set_active(True)
 Gst.debug_set_default_threshold(2)
@@ -54,13 +54,11 @@ class StreamCapture(mp.Process):
         self.currentState = StreamMode.INIT_STREAM
         self.pipeline = None
         self.source = None
-        self.decode = None
-        self.convert = None
-        self.sink = None
+        self.metadata_sink = None
+        self.frame_sink = None
         self.image_arr = None
         self.newImage = False
-        self.frame1 = None
-        self.frame2 = None
+        self.newMetadata = False
         self.num_unexpected_tot = 40
         self.unexpected_cnt = 0
         self.flag = True
@@ -68,13 +66,7 @@ class StreamCapture(mp.Process):
         self.fps = 0
         self.last_frame_time = time.time()
 
-    def gst_to_opencv(self, sample):
-        if self.flag:
-            self.flag = False
-            self.pipeline.send_event(Gst.Event.new_latency(0))
-            # print("latency: " + str(self.pipeline.getLatency()))
-            # print("Delay: " + str(self.pipeline.getDelay()))
-
+    def log_fps(self):
         self.counter_frame_fps += 1
         frame_time = time.time()
         if frame_time - self.last_frame_time >= 1:
@@ -82,94 +74,86 @@ class StreamCapture(mp.Process):
             self.counter_frame_fps = 0
             self.last_frame_time = time.time()
             self.logger.info("fps: " + str(self.fps))
+    
+    def gst_to_opencv(self, sample):
+        if self.flag:
+            self.flag = False
+            self.pipeline.send_event(Gst.Event.new_latency(0))
+        
+        self.log_fps()
 
-        buf = sample.get_buffer()
-        caps = sample.get_caps()
+        buffer = sample.get_buffer()
+        caps_format = sample.get_caps().get_structure(0)
 
-        # print("format: {0}".format(caps.get_structure(0).get_value('format')))
-        # print("Buffer:   {0}".format(buf))
-        # print("Buffer Size:   {0}".format(buf.get_size()))
-        memory = buf.get_all_memory()
-        # print("Memory dir:   {0}".format(dir(memory)))
-        # print("Sample:   {0}".format(sample))
-        # print("Buffer dir:   {0}".format(dir(buf)))
-        # print("Sample dir:   {0}".format(dir(sample)))
-        # print("Height:   {0}".format(caps.get_structure(0).get_value('height')))
-        # print("Width:   {0}".format(caps.get_structure(0).get_value('width')))
-
-        (result, mapinfo) = buf.map(Gst.MapFlags.READ)
+        (result, mapinfo) = buffer.map(Gst.MapFlags.READ)
         assert result
+        
+        buffer.unmap(mapinfo)
+        
+        frmt_str = caps_format.get_value('format') 
+        video_format = GstVideo.VideoFormat.from_string(frmt_str)
+        
+        w, h = caps_format.get_value('width'), caps_format.get_value('height')
+        c = utils.get_num_channels(video_format)
 
-        try:
-            # print("DATA:  {0}".format(mapinfo.data))
-            pass
-        finally:
-            buf.unmap(mapinfo)
-
-        arr = np.ndarray(
-            (caps.get_structure(0).get_value('height'),
-             caps.get_structure(0).get_value('width'),
-             3),
-            buffer=buf.extract_dup(0, buf.get_size()),
-            dtype=np.uint8)
+        buffer_size = buffer.get_size()
+        shape = (h, w, c) if (h * w * c == buffer_size) else buffer_size
+        arr = np.ndarray(shape=shape, buffer=buffer.extract_dup(0, buffer_size),
+                         dtype=utils.get_np_dtype(video_format))
         return arr
+    
+    def gst_to_metadata(self, sample):
+        buffer = sample.get_buffer()
+        
+        (result, mapinfo) = buffer.map(Gst.MapFlags.READ)
+        assert result
+        
+        buffer.unmap(mapinfo)
+        
+        buffer_size = buffer.get_size()
+        metadata = buffer.extract_dup(0, buffer_size)
+        return metadata
 
-    def new_buffer(self, sink, _):
+    def new_frame_buffer(self, sink, _):
         sample = sink.emit("pull-sample")
         arr = self.gst_to_opencv(sample)
         self.image_arr = arr
         self.newImage = True
+        return Gst.FlowReturn.OK
+    
+    def new_metadata_buffer(self, sink, _):
+        sample = sink.emit("pull-sample")
+        metadata = self.gst_to_metadata(sample)
+        self.metadata = metadata
+        self.newMetadata = True
         return Gst.FlowReturn.OK
 
     def set_properties(self):
         self.source = self.pipeline.get_by_name('m_uri')
         self.source.set_property('uri', self.streamLink)
 
-        self.sink = self.pipeline.get_by_name('m_appsink')
+        self.frame_sink = self.pipeline.get_by_name('frame_appsink')
+        self.metadata_sink = self.pipeline.get_by_name('metadata_appsink')
         if self.sink is not None:
-            self.sink.set_property('max-lateness', 1000)
+            self.frame_sink.set_property('max-lateness', 1000)
 
-            self.sink.set_property('max-buffers', 1)
+            self.frame_sink.set_property('max-buffers', 1)
 
-            self.sink.set_property('drop', 'true')
+            self.frame_sink.set_property('drop', 'true')
 
-            self.sink.set_property('emit-signals', True)
+            self.frame_sink.set_property('emit-signals', True)
 
-        # self.sink.set_property('drop', True)
-        # self.sink.set_property('sync', False)
-
-        # caps = Gst.caps_from_string(
-        #     'video/x-raw, format=(string){BGR, GRAY8}; video/x-bayer,format=(string){rgba,rggb,bggr,grbg,gbrg}')
-        # caps = Gst.caps_from_string('video/x-raw, format=(string){I420, YUYU, UYVY, YUY2}')
-        # self.sink.set_property('caps', caps)
-
-        if self.sink is None or not self.pipeline:
+        if self.frame_sink is None or not self.pipeline:
             print("Not all elements could be created.")
             self.stop.set()
 
-        self.sink.connect("new-sample", self.new_buffer, self.sink)
+        self.frame_sink.connect("new-sample", self.new_frame_buffer, self.frame_sink)
+        self.metadata_sink.connect("new-sample", self.new_metadata_buffer, self.metadata_sink)
 
     def run(self):
         # working VVVVVVVVVVVVVVVVVVVVVVV
         self.pipeline = Gst.parse_launch(
-            'uridecodebin name=m_uri ! nvvidconv ! video/x-raw, format=BGRx ! videoconvert ! videorate ! video/x-raw, framerate=20/1, format=BGR ! appsink name=m_appsink')
-
-        # self.pipeline = Gst.parse_launch(
-        #     'uridecodebin name=m_uri ! nvvidconv ! video/x-raw, format=BGRx ! videoconvert ! videorate ! video/x-raw, framerate=25/1, format=BGR ! appsink name=m_appsink')
-
-        # Gst.gst_debug_bin_to_dot_file(self.pipeline, Gst.GST_DEBUG_GRAPH_SHOW_ALL, "pipeline")
-
-        # self.pipeline = Gst.parse_launch(
-        #     'uridecodebin name=m_uri ! nvvidconv ! video/x-raw, format=BGRx ! videoconvert ! videorate ! video/x-raw, framerate=10/1, format=BGR ! fpsdisplaysink')
-
-        # self.pipeline = Gst.parse_launch(
-        #     'rtspsrc location=rtsp://128.9.0.11/test.ts tls-validation-flags=generic-error ! rtpjitterbuffer ! application/x-rtp ! rtph264depay ! appsink name=m_appsink')
-
-        # self.pipeline = Gst.parse_launch(
-        #     'rtspsrc location=rtsp://128.9.0.11/test.ts tls-validation-flags=generic-error ! rtpmp2tdepay ! appsink name=m_appsink')
-
-        # self.pipeline = Gst.parse_launch(
-        #     'udpsrc rtspsrc location=rtsp://128.9.0.11/test.ts media=video.encoding-name=MP2T latency=0 ! rtpmp2tdepay ! tsdemux ! h264parse ! omxh264dec ! videoconvert ! video/x-raw,fromat=RGB ! appsink name=m_appsink')
+            'uridecodebin name=m_uri ! nvvidconv ! video/x-raw, format=BGRx ! videoconvert ! videorate ! video/x-raw, framerate=20/1, format=BGR ! appsink name=frame_appsink')
 
         self.set_properties()
 
@@ -189,14 +173,13 @@ class StreamCapture(mp.Process):
                 break
 
             message = bus.timed_pop_filtered(10000, Gst.MessageType.ANY)
-            # print "image_arr: ", image_arr
-            if self.image_arr is not None and self.newImage is True:
+            if self.image_arr is not None and self.newImage is True and self.metadata is not None and self.newMetadata is True:
 
                 if not self.outQueue.full():
-                    # print("\r adding to queue of size{}".format(self.outQueue.qsize()), end='\r')
-                    self.outQueue.put((StreamCommands.FRAME, self.image_arr), block=False)
+                    self.outQueue.put((self.image_arr, self.metadata), block=False)
 
                 self.image_arr = None
+                self.metadata = None
                 self.unexpected_cnt = 0
 
             if message:
