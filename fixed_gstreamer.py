@@ -6,7 +6,8 @@ import gi
 import time
 
 gi.require_version('Gst', '1.0')
-from gi.repository import Gst, GstVideo, utils
+from gi.repository import Gst, GstVideo
+import gstreamer.utils as utils
 
 
 Gst.debug_set_active(True)
