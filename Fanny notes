@@ -1,0 +1,44 @@
+הערות:
+
+קובצים:
+
+video_manipulation:
+line 13 - split with defualt value of -1 ?
+line 13 - split the path with os.path
+line 17 - no saving the path in the object storage
+
+line 23 - very long function, can be split
+line 31 - split without the defualt value of -1 now ?
+line 31 - split the path with os.path
+
+line 33 - 34 - not really understanding the names
+
+line 38 - not really loving the while when we only stop with the break in line 43
+
+line 56 - activating again the is_frame_tagged method
+
+line 64 - 66 can be out of the while loop
+
+line 75 - 78 Where do u delete the local files ?
+
+
+blob_storage:
+
+line 11 - how do i upload files if i dont use the parameter files_dir (Why not using this as a parameter in the upload all files method)
+line 13 - manage*
+
+line 39 - will crash if files_dir is None
+
+line 50 - might run os.listdir on None value
+line 65 - video path is the name of the video ?
+
+
+flask_server:
+
+line 13 - Why not doing this outside of the route ?
+line 13 - 14 could be const values and not recreate them
+line 19-20 create db every request ?
+
+line 23 container name should be the same for all of the things and if using more then one save the name as const
+
+BETTER NAMES FOR MOST FUNCTIONS
