@@ -5,6 +5,8 @@
 video_manipulation:
 line 13 - split with defualt value of -1 ?
 line 13 - split the path with os.path
+line 15 - captured_video var name
+line 16 - might crash
 line 17 - no saving the path in the object storage
 
 line 23 - very long function, can be split
@@ -24,6 +26,7 @@ line 75 - 78 Where do u delete the local files ?
 
 blob_storage:
 
+line 6 - 
 line 11 - how do i upload files if i dont use the parameter files_dir (Why not using this as a parameter in the upload all files method)
 line 13 - manage*
 
